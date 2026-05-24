@@ -2,12 +2,13 @@
 
 // --- Password Recovery Hash Intercept ---
 // If Supabase falls back to the Site URL (homepage), seamlessly redirect it correctly
-if (window.location.hash && window.location.hash.includes('type=recovery') && !window.location.pathname.includes('reset-password.html')) {
+if (window.location.hash && window.location.hash.includes('type=recovery') && !window.location.pathname.includes('reset-password')) {
     // Determine the base URL (relative works for SPAs or static sites)
-    window.location.replace('reset-password.html' + window.location.hash);
+    const basePath = window.location.pathname.replace(/\/[^/]*$/, '/');
+    window.location.replace(basePath + 'reset-password' + window.location.hash);
 }
 
-const isAuthPage = window.location.pathname.includes('login.html') || window.location.pathname.includes('signup.html');
+const isAuthPage = window.location.pathname.includes('login.html') || window.location.pathname.includes('signup.html') || window.location.pathname.includes('/login') || window.location.pathname.includes('/signup');
 
 document.addEventListener('DOMContentLoaded', async () => {
     
@@ -71,7 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Intelligently fallback to production URL if opened via file:// to prevent Supabase default localhost:3000 errors
                 let redirectUrl = new URL('index.html', window.location.href).href;
                 if (window.location.protocol === 'file:') {
-                    redirectUrl = 'https://bhagawangautam.com.np/index.html';
+                    redirectUrl = 'https://bhagawangautam.com.np/';
                 }
 
                 // 1. Sign up user FIRST so they get authenticated
@@ -88,6 +89,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
 
                 if (authError) throw authError;
+
+                // Handle duplicate email if email enumeration protection is ON
+                if (authData?.user?.identities?.length === 0) {
+                    throw new Error('An account with this email already exists.');
+                }
                 
                 // If email confirmations are ON, session will be null. 
                 if (!authData.session) {
@@ -104,27 +110,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (avatarFile) {
                     btn.innerText = 'Uploading picture...';
                     const fileExt = avatarFile.name.split('.').pop();
-                    const fileName = `${authData.user.id}_${Math.random()}.${fileExt}`;
-                    const filePath = `public/${fileName}`;
+                    // IMPORTANT: Path must start with the user's own ID to match RLS storage policy
+                    const filePath = `${authData.user.id}/avatar-${Date.now()}.${fileExt}`;
 
                     const { error: uploadError } = await supabaseClient.storage
                         .from('avatars')
-                        .upload(filePath, avatarFile);
+                        .upload(filePath, avatarFile, { upsert: true });
                     
-                    if (uploadError) throw uploadError;
-
-                    // Get public URL and update profile
-                    const { data: urlData } = supabaseClient.storage.from('avatars').getPublicUrl(filePath);
-                    
-                    await supabaseClient.from('profiles')
-                        .update({ avatar_url: urlData.publicUrl })
-                        .eq('id', authData.user.id);
+                    if (uploadError) {
+                        // Non-fatal: account was created, avatar upload failed
+                        console.warn('Avatar upload failed (non-fatal):', uploadError.message);
+                    } else {
+                        // Get public URL and update profile
+                        const { data: urlData } = supabaseClient.storage.from('avatars').getPublicUrl(filePath);
+                        
+                        await supabaseClient.from('profiles')
+                            .update({ avatar_url: urlData.publicUrl })
+                            .eq('id', authData.user.id);
+                    }
                 }
 
                 // Success
                 successDiv.style.display = 'block';
                 setTimeout(() => {
-                    window.location.href = 'index.html';
+                    window.location.href = '/';
                 }, 2000);
 
             } catch (err) {
@@ -158,8 +167,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (error) throw error;
 
-                // Success
-                window.location.href = 'index.html';
+                // Success - redirect to dashboard after login
+                window.location.href = 'dashboard';
 
             } catch (err) {
                 errorDiv.innerText = 'Invalid email or password.';
@@ -187,9 +196,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             try {
                 // Intelligently fallback to production URL if opened via file:// to prevent Supabase default localhost:3000 errors
-                let redirectUrl = new URL('reset-password.html', window.location.href).href;
+                let redirectUrl = new URL('reset-password', window.location.href).href;
                 if (window.location.protocol === 'file:') {
-                    redirectUrl = 'https://bhagawangautam.com.np/reset-password.html';
+                    redirectUrl = 'https://bhagawangautam.com.np/reset-password';
                 }
 
                 const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
@@ -238,10 +247,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 if (error) throw error;
 
-                successDiv.innerText = 'Password updated successfully! Redirecting you...';
+                successDiv.innerText = 'Password updated successfully! Redirecting you to login...';
                 successDiv.style.display = 'block';
                 setTimeout(() => {
-                    window.location.href = 'index.html';
+                    window.location.href = 'login';
                 }, 2000);
             } catch (err) {
                 errorDiv.innerText = err.message || 'Failed to update password.';
@@ -257,7 +266,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         logoutBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             await supabaseClient.auth.signOut();
-            window.location.href = 'index.html';
+            window.location.href = '/';
         });
     }
 });
@@ -285,7 +294,7 @@ function updateNavigation(user) {
 
     if (user) {
         // Logged In: Remove Login/Signup
-        const buttonsToRemove = navLinksContainer.querySelectorAll('a[href="login.html"], a[href="signup.html"]');
+        const buttonsToRemove = navLinksContainer.querySelectorAll('a[href="login.html"], a[href="signup.html"], a[href="login"], a[href="signup"]');
         buttonsToRemove.forEach(btn => btn.style.display = 'none');
         
         // Fetch role to show Admin Link
@@ -338,13 +347,13 @@ function updateNavigation(user) {
         if (logoutBtn) logoutBtn.style.display = 'none';
 
         // Add Login/Signup if they don't explicitly exist (like on legacy pages)
-        if (!navLinksContainer.querySelector('a[href="login.html"]')) {
+        if (!navLinksContainer.querySelector('a[href="login.html"]') && !navLinksContainer.querySelector('a[href="login"]')) {
             const login = document.createElement('a');
             login.href = 'login.html';
             login.innerText = 'Log In';
             navLinksContainer.insertBefore(login, navLinksContainer.lastElementChild);
         }
-        if (!navLinksContainer.querySelector('a[href="signup.html"]')) {
+        if (!navLinksContainer.querySelector('a[href="signup.html"]') && !navLinksContainer.querySelector('a[href="signup"]')) {
             const signup = document.createElement('a');
             signup.href = 'signup.html';
             signup.innerText = 'Sign Up';

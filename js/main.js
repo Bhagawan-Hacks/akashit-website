@@ -36,10 +36,14 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Active Link Highlighting based on current page ---
-    const currentPage = window.location.pathname.split('/').pop() || 'index.html';
+    // Normalize pathname: strip leading slash and .html extension to compare cleanly
+    const rawPath = window.location.pathname.split('/').pop() || 'index';
+    const currentPage = rawPath.replace(/\.html$/, '') || 'index';
+
     const navItems = document.querySelectorAll('.nav-links a');
     navItems.forEach(link => {
-        if (link.getAttribute('href') === currentPage) {
+        const href = (link.getAttribute('href') || '').replace(/\.html$/, '').replace(/^\//, '') || 'index';
+        if (href === currentPage) {
             link.classList.add('active');
         } else {
             link.classList.remove('active');
@@ -171,6 +175,139 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             // Toggle current item
             item.classList.toggle('active');
+        });
+    });
+
+    // --- Dynamic Theme Toggle Button ---
+    const themeBtn = document.createElement('button');
+    themeBtn.className = 'theme-toggle-btn';
+    themeBtn.setAttribute('aria-label', 'Toggle Dark/Light Mode');
+    themeBtn.innerHTML = document.documentElement.getAttribute('data-theme') === 'light' ? '🌙' : '☀️';
+    themeBtn.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: var(--bg-card-glass);
+        border: 1px solid var(--border-light);
+        color: var(--text-off-white);
+        font-size: 1.5rem;
+        cursor: pointer;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    `;
+    
+    // Add hover effect
+    themeBtn.addEventListener('mouseenter', () => {
+        themeBtn.style.transform = 'translateY(-5px) scale(1.05)';
+        themeBtn.style.boxShadow = '0 8px 25px rgba(230, 57, 70, 0.4)';
+    });
+    themeBtn.addEventListener('mouseleave', () => {
+        themeBtn.style.transform = 'none';
+        themeBtn.style.boxShadow = '0 4px 15px rgba(0,0,0,0.3)';
+    });
+
+    themeBtn.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', newTheme);
+        localStorage.setItem('bhagawan_it_theme', newTheme);
+        themeBtn.innerHTML = newTheme === 'light' ? '🌙' : '☀️';
+        
+        // Quick spin animation on click
+        themeBtn.animate([
+            { transform: 'rotate(0deg) scale(1)' },
+            { transform: 'rotate(180deg) scale(1.2)' },
+            { transform: 'rotate(360deg) scale(1)' }
+        ], { duration: 400, easing: 'ease-in-out' });
+    });
+    
+    document.body.appendChild(themeBtn);
+
+    // --- Scroll to Top Button ---
+    const scrollTopBtn = document.createElement('button');
+    scrollTopBtn.innerHTML = '↑';
+    scrollTopBtn.style.cssText = `
+        position: fixed;
+        bottom: 80px;
+        right: 20px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: var(--color-primary-red);
+        border: none;
+        color: white;
+        font-size: 1.2rem;
+        cursor: pointer;
+        z-index: 9998;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 15px rgba(230, 57, 70, 0.4);
+        transition: all 0.3s ease;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(20px);
+    `;
+
+    scrollTopBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    scrollTopBtn.addEventListener('mouseenter', () => {
+        scrollTopBtn.style.transform = 'translateY(-3px)';
+        scrollTopBtn.style.boxShadow = '0 6px 20px rgba(230, 57, 70, 0.6)';
+    });
+    scrollTopBtn.addEventListener('mouseleave', () => {
+        scrollTopBtn.style.transform = 'translateY(0)';
+        scrollTopBtn.style.boxShadow = '0 4px 15px rgba(230, 57, 70, 0.4)';
+    });
+
+    document.body.appendChild(scrollTopBtn);
+
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 300) {
+            scrollTopBtn.style.opacity = '1';
+            scrollTopBtn.style.pointerEvents = 'auto';
+            scrollTopBtn.style.transform = 'translateY(0)';
+        } else {
+            scrollTopBtn.style.opacity = '0';
+            scrollTopBtn.style.pointerEvents = 'none';
+            scrollTopBtn.style.transform = 'translateY(20px)';
+        }
+    });
+
+    // --- Interactive 3D Card Tilt Effect ---
+    const cards = document.querySelectorAll('.card');
+    cards.forEach(card => {
+        card.addEventListener('mousemove', (e) => {
+            const rect = card.getBoundingClientRect();
+            const x = e.clientX - rect.left; 
+            const y = e.clientY - rect.top;  
+            
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            
+            // Calculate rotation. Max rotation is 15 degrees.
+            const rotateX = ((y - centerY) / centerY) * -15; 
+            const rotateY = ((x - centerX) / centerX) * 15;
+            
+            card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+        });
+        
+        card.addEventListener('mouseleave', () => {
+            card.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+            // Wait for transition, then clear style so CSS hover works if needed, but JS controls it now
+            setTimeout(() => {
+                card.style.transform = '';
+            }, 400); 
         });
     });
 
